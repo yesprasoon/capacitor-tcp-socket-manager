@@ -47,7 +47,7 @@
 To install the plugin, run the following commands:
 
 ```bash
-npm install capacitor-tcp-socket-manager
+npm install @yesprasoon/capacitor-tcp-socket-manager
 npx cap sync
 
 ```
