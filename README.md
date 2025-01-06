@@ -1,6 +1,32 @@
 # Capacitor TCP Socket Manager
 
-`capacitor-tcp-socket-manager` is a Capacitor plugin that enables seamless TCP socket communication for your hybrid mobile apps. It allows you to create a TCP server, manage client connections, send and receive messages, and handle various socket operations efficiently.
+`capacitor-tcp-socket-manager` is an **Android-specific** Capacitor plugin that enables seamless TCP socket communication for your hybrid mobile apps. It allows you to create a TCP server, manage client connections, send and receive messages, and handle various socket operations efficiently. **Note: This plugin currently supports Android only.**
+
+---
+
+## Table of Contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [API Methods](#api-methods)
+  - [Server-Side Methods](#server-side-methods)
+    - [startServer](#startserver)
+    - [stopServer](#stopserver)
+    - [disconnectAllClients](#disconnectallclients)
+    - [getClientCount](#getclientcount)
+  - [Client-Side Methods](#client-side-methods)
+    - [connectToServer](#connecttoserver)
+    - [disconnectFromServer](#disconnectfromserver)
+    - [sendMessageToServer](#sendmessagetoserver)
+  - [Utility Methods](#utility-methods)
+    - [getDeviceIpAddress](#getdeviceipaddress)
+- [Events](#events)
+  - [receiveMessage](#receivemessage)
+- [Example Usage](#example-usage)
+  - [Starting a Server](#starting-a-server)
+  - [Sending a Message from Client to Server](#sending-a-message-from-client-to-server)
+- [Notes](#notes)
+- [License](#license)
 
 ---
 
@@ -11,20 +37,30 @@
 - Send and receive messages.
 - Manage multiple client connections.
 - Get the local device's IP address.
-- Limit maximum client connections.
-- Disconnect clients or the server gracefully.
+- Limit maximum client connections (default is 10).
+- Disconnect individual or all clients gracefully.
 
 ---
 
 ## Installation
 
+To install the plugin, run the following commands:
+
 ```bash
 npm install capacitor-tcp-socket-manager
 npx cap sync
+
 ```
 
 ---
 
+## Imports
+
+### Importing the Plugin
+Before using the capacitor-tcp-socket-manager plugin in your frontend, you need to import it in your TypeScript files as follows:
+```javascript
+import { TcpSocketManager } from 'capacitor-tcp-socket-manager';
+```
 ## API Methods
 
 ### Server-Side Methods
@@ -37,7 +73,7 @@ Starts a TCP server on the specified port.
 
 **Usage:**
 ```javascript
-Capacitor.Plugins.CapacitorTcpSocketManager.startServer({ port: 12345 })
+TcpSocketManager.startServer({ port: 12345 })
   .then(() => console.log('Server started'))
   .catch(error => console.error(error));
 ```
@@ -47,7 +83,7 @@ Stops the TCP server if running.
 
 **Usage:**
 ```javascript
-Capacitor.Plugins.CapacitorTcpSocketManager.stopServer()
+TcpSocketManager.stopServer()
   .then(() => console.log('Server stopped'))
   .catch(error => console.error(error));
 ```
@@ -57,7 +93,7 @@ Disconnects all connected clients from the server.
 
 **Usage:**
 ```javascript
-Capacitor.Plugins.CapacitorTcpSocketManager.disconnectAllClients()
+TcpSocketManager.disconnectAllClients()
   .then(() => console.log('All clients disconnected'))
   .catch(error => console.error(error));
 ```
@@ -67,7 +103,7 @@ Gets the number of currently connected clients.
 
 **Usage:**
 ```javascript
-Capacitor.Plugins.CapacitorTcpSocketManager.getClientCount()
+TcpSocketManager.getClientCount()
   .then(result => console.log(`Connected clients: ${result.count}`))
   .catch(error => console.error(error));
 ```
@@ -83,7 +119,7 @@ Connects to a TCP server.
 
 **Usage:**
 ```javascript
-Capacitor.Plugins.CapacitorTcpSocketManager.connectToServer({ ipAddress: '192.168.1.1', port: 12345 })
+TcpSocketManager.connectToServer({ ipAddress: '192.168.1.1', port: 12345 })
   .then(() => console.log('Connected to server'))
   .catch(error => console.error(error));
 ```
@@ -93,7 +129,7 @@ Disconnects from the connected server.
 
 **Usage:**
 ```javascript
-Capacitor.Plugins.CapacitorTcpSocketManager.disconnectFromServer()
+TcpSocketManager.disconnectFromServer()
   .then(() => console.log('Disconnected from server'))
   .catch(error => console.error(error));
 ```
@@ -106,7 +142,7 @@ Sends a message to the connected server.
 
 **Usage:**
 ```javascript
-Capacitor.Plugins.CapacitorTcpSocketManager.sendMessageToServer({ message: 'Hello Server!' })
+TcpSocketManager.sendMessageToServer({ message: 'Hello Server!' })
   .then(() => console.log('Message sent'))
   .catch(error => console.error(error));
 ```
@@ -118,7 +154,7 @@ Gets the local device's IP address.
 
 **Usage:**
 ```javascript
-Capacitor.Plugins.CapacitorTcpSocketManager.getDeviceIpAddress()
+TcpSocketManager.getDeviceIpAddress()
   .then(result => console.log(`Device IP Address: ${result.ipAddress}`))
   .catch(error => console.error(error));
 ```
@@ -132,7 +168,7 @@ Listens for incoming messages on the server.
 
 **Usage:**
 ```javascript
-Capacitor.Plugins.CapacitorTcpSocketManager.addListener('receiveMessage', data => {
+TcpSocketManager.addListener('receiveMessage', data => {
   console.log(`Message received: ${data.message}`);
 });
 ```
@@ -143,16 +179,16 @@ Capacitor.Plugins.CapacitorTcpSocketManager.addListener('receiveMessage', data =
 
 ### Starting a Server
 ```javascript
-Capacitor.Plugins.CapacitorTcpSocketManager.startServer({ port: 8080 })
+TcpSocketManager.startServer({ port: 8080 })
   .then(() => console.log('Server is running on port 8080'))
   .catch(error => console.error(error));
 ```
 
 ### Sending a Message from Client to Server
 ```javascript
-Capacitor.Plugins.CapacitorTcpSocketManager.connectToServer({ ipAddress: '192.168.0.100', port: 8080 })
+TcpSocketManager.connectToServer({ ipAddress: '192.168.0.100', port: 8080 })
   .then(() => {
-    return Capacitor.Plugins.CapacitorTcpSocketManager.sendMessageToServer({ message: 'Hello, Server!' });
+    return TcpSocketManager.sendMessageToServer({ message: 'Hello, Server!' });
   })
   .then(() => console.log('Message sent to server'))
   .catch(error => console.error(error));
