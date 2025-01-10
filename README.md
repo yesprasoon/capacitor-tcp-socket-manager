@@ -12,7 +12,6 @@
   - [Server-Side Methods](#server-side-methods)
     - [startServer](#startserver)
     - [stopServer](#stopserver)
-    - [disconnectAllClients](#disconnectallclients)
     - [getClientCount](#getclientcount)
   - [Client-Side Methods](#client-side-methods)
     - [connectToServer](#connecttoserver)
@@ -73,7 +72,7 @@ Starts a TCP server on the specified port.
 
 **Usage:**
 ```javascript
-TcpSocketManager.startServer({ port: 12345 })
+TcpSocketManager.startServer({ port: 8080 })
   .then(() => console.log('Server started'))
   .catch(error => console.error(error));
 ```
@@ -85,16 +84,6 @@ Stops the TCP server if running.
 ```javascript
 TcpSocketManager.stopServer()
   .then(() => console.log('Server stopped'))
-  .catch(error => console.error(error));
-```
-
-#### `disconnectAllClients`
-Disconnects all connected clients from the server.
-
-**Usage:**
-```javascript
-TcpSocketManager.disconnectAllClients()
-  .then(() => console.log('All clients disconnected'))
   .catch(error => console.error(error));
 ```
 
@@ -119,7 +108,7 @@ Connects to a TCP server.
 
 **Usage:**
 ```javascript
-TcpSocketManager.connectToServer({ ipAddress: '192.168.1.1', port: 12345 })
+TcpSocketManager.connectToServer({ ipAddress: '192.168.0.100', port: 8080 })
   .then(() => console.log('Connected to server'))
   .catch(error => console.error(error));
 ```
@@ -138,11 +127,13 @@ TcpSocketManager.disconnectFromServer()
 Sends a message to the connected server.
 
 **Parameters:**
+- `ipAddress`: The IP address of the server.
+- `port`: (optional, default: 8080) Port number of the server.
 - `message`: The message string to send.
 
 **Usage:**
 ```javascript
-TcpSocketManager.sendMessageToServer({ message: 'Hello Server!' })
+TcpSocketManager.sendMessageToServer({ ipAddress: '192.168.0.100', port: 8080, message: 'Hello Server!' })
   .then(() => console.log('Message sent'))
   .catch(error => console.error(error));
 ```
@@ -188,7 +179,7 @@ TcpSocketManager.startServer({ port: 8080 })
 ```javascript
 TcpSocketManager.connectToServer({ ipAddress: '192.168.0.100', port: 8080 })
   .then(() => {
-    return TcpSocketManager.sendMessageToServer({ message: 'Hello, Server!' });
+    return TcpSocketManager.sendMessageToServer({ ipAddress: '192.168.0.100', port: 8080, message: 'Hello, Server!' });
   })
   .then(() => console.log('Message sent to server'))
   .catch(error => console.error(error));

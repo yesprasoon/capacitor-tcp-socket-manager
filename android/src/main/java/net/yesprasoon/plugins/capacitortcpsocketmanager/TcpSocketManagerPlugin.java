@@ -1,4 +1,4 @@
-package com.tastyapps.plugins.capacitortcpsocketmanager;
+package net.yesprasoon.plugins.capacitortcpsocketmanager;
 
 import android.util.Log;
 import com.getcapacitor.JSObject;
@@ -15,6 +15,7 @@ import java.net.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Enumeration;
+import java.util.Collections;
 
 @CapacitorPlugin(name = "TcpSocketManager")
 public class TcpSocketManagerPlugin extends Plugin {
@@ -23,7 +24,7 @@ public class TcpSocketManagerPlugin extends Plugin {
 
     private ServerSocket serverSocket;
     private Socket clientSocket;
-    private List<Socket> clientConnections = new ArrayList<>();  // List to track client connections
+    private final List<Socket> clientConnections = Collections.synchronizedList(new ArrayList<>());
     private static final int MAX_CLIENTS = 10;
 
     @PluginMethod
@@ -67,60 +68,127 @@ public class TcpSocketManagerPlugin extends Plugin {
     @PluginMethod
     public void startServer(PluginCall call) {
         int port = call.getInt("port", 8080);
-        try {
+        Log.d(TAG, "startServer called with port: " + port);
+        try{
             if (port < 1 || port > 65535) {
                 call.reject("Invalid port number. Port must be between 1 and 65535.");
                 return;
             }
             if (serverSocket != null && !serverSocket.isClosed()) {
-                call.resolve(new JSObject().put("success", true));
+                Log.w(TAG, "Server is already running on port: " + serverSocket.getLocalPort());
+                call.resolve(new JSObject().put("success", true).put("message", "Server already running"));
                 return;
             }
-            serverSocket = new ServerSocket(port);
-            // serverSocket.setSoTimeout(30000); // Timeout after 30 seconds
-            new Thread(() -> {
+
+            // Reset client socket if previously connected
+            if (clientSocket != null && !clientSocket.isClosed()) {
                 try {
-                    while (!serverSocket.isClosed()) {
-                        Socket client = serverSocket.accept();
-                        if (clientConnections.size() >= MAX_CLIENTS) {
-                            client.close();
-                            Log.w(TAG, "Connection rejected: Maximum client limit reached.");
-                            continue;
-                        }
-                        clientConnections.add(client);
-                        BufferedReader in = new BufferedReader(new InputStreamReader(client.getInputStream()));
-                        String message;
-                        while ((message = in.readLine()) != null) {
-                            Log.i(TAG, "Received message: " + message);
-
-                            // Notify the frontend with the received message
-                            JSObject eventData = new JSObject();
-                            eventData.put("message", message);
-                            notifyListeners("receiveMessage", eventData);  // Notify frontend
-                        }
-                    }
+                    clientSocket.close();
+                    clientSocket = null;
+                    Log.i(TAG, "Resetting client socket before starting the server.");
                 } catch (IOException e) {
-                    call.reject("Error starting server", e);
+                    Log.e(TAG, "Error closing client socket before restarting server: " + e.getMessage());
                 }
-            }).start();
+            }
 
+            // Ensure no existing server socket is running
+            if (serverSocket != null && !serverSocket.isClosed()) {
+                call.resolve(new JSObject().put("success", true).put("message", "Server already running"));
+                return;
+            }
+
+            serverSocket = new ServerSocket(port);
+            serverSocket.setSoTimeout(30000); // Optional: set timeout
+
+            new Thread(() -> listenForClients()).start();
             call.resolve(new JSObject().put("success", true));
         } catch (IOException e) {
-            call.reject("Error starting server", e);
+            Log.e(TAG, "Failed to start server on port " + port + " at " + serverSocket.getInetAddress() + ": " + e.getMessage(), e);
+            call.reject("Error starting server. Please check logs for more details.", e);
+        }
+    }
+
+    private void listenForClients() {
+        while (!serverSocket.isClosed()) {
+            try {
+                Socket client = serverSocket.accept();
+                if (client == null || client.isClosed()) {
+                    Log.w(TAG, "Connection attempt failed.");
+                    continue;
+                }
+                handleClient(client); // Delegate each client connection
+            } catch (SocketTimeoutException e) {
+                Log.w(TAG, "Socket accept timed out, continuing...");
+            } catch (IOException e) {
+                Log.e(TAG, "Error accepting client connection", e);
+            }
+        }
+    }
+
+
+    private void handleClient(Socket client) {
+        new Thread(() -> {
+            try {
+                if (clientConnections.size() >= MAX_CLIENTS) {
+                    cleanupClient(client); // Reject the client and clean up
+                    Log.w(TAG, "Connection rejected: Maximum client limit reached.");
+                    return;
+                }
+
+                synchronized (clientConnections) {
+                    clientConnections.add(client);
+                }
+
+                BufferedReader in = new BufferedReader(new InputStreamReader(client.getInputStream()));
+                String message;
+                while ((message = in.readLine()) != null) {
+                    Log.i(TAG, "Received message: " + message);
+
+                    // Notify the frontend with the received message
+                    JSObject eventData = new JSObject();
+                    eventData.put("message", message);
+                    notifyListeners("receiveMessage", eventData);
+                }
+            } catch (IOException e) {
+                Log.e(TAG, "Error in client handling", e);
+            } finally {
+                cleanupClient(client);
+            }
+        }).start();
+    }
+
+    private void cleanupClient(Socket client) {
+        try {
+            synchronized (clientConnections) {
+                clientConnections.remove(client);
+            }
+            client.close();
+            Log.i(TAG, "Client disconnected and cleaned up.");
+        } catch (IOException e) {
+            Log.e(TAG, "Error closing client socket", e);
         }
     }
 
     @PluginMethod
     public void stopServer(PluginCall call) {
-        if (serverSocket != null && !serverSocket.isClosed()) {
-            try {
+        try {
+            if (serverSocket != null && !serverSocket.isClosed()) {
+                synchronized (clientConnections) {
+                    for (Socket client : clientConnections) {
+                        cleanupClient(client); // Ensure each client is properly cleaned up
+                    }
+                    clientConnections.clear();
+                }
                 serverSocket.close();
-                call.resolve(new JSObject().put("success", true));
-            } catch (IOException e) {
-                call.reject("Error stopping the server", e);
+                Log.i(TAG, "Server stopped successfully.");
             }
-        } else {
-            call.reject("Server is not running");
+            if (call != null) {
+                call.resolve(new JSObject().put("success", true));
+            }
+        } catch (IOException e) {
+            if (call != null) {
+                call.reject("Error stopping server", e);
+            }
         }
     }
 
@@ -129,31 +197,44 @@ public class TcpSocketManagerPlugin extends Plugin {
     public void connectToServer(PluginCall call) {
         String ipAddress = call.getString("ipAddress", "");
         if (!isValidIpAddress(ipAddress)) {
+            Log.w(TAG, "Invalid IP address: " + ipAddress);
             call.reject("Invalid IP address format.");
             return;
         }
-        int port = call.getInt("port", 8080); // Default port
 
-        if (ipAddress.isEmpty()) {
-            call.reject("IP address is required");
+        int port = call.getInt("port", 8080);
+        if (port < 1 || port > 65535) {
+            call.reject("Invalid port number. Port must be between 1 and 65535.");
             return;
         }
 
-        // Add logic to connect to the server
+        if (ipAddress.isEmpty()) {
+            call.reject("IP address is required.");
+            return;
+        }
+
+        synchronized (this) {
+            // Close and clean up if a previous connection exists
+            if (clientSocket != null && !clientSocket.isClosed()) {
+                try {
+                    clientSocket.close();
+                    clientSocket = null;
+                } catch (IOException e) {
+                    Log.e(TAG, "Error closing previous socket before reconnecting", e);
+                }
+            }
+        }
+
         try {
-            clientSocket = new Socket(ipAddress, port);  // Connect to server
-            // clientSocket.setSoTimeout(30000); // Timeout after 30 seconds for reading data
-            // isClientConnected = true;
+            clientSocket = new Socket(ipAddress, port);
+            clientSocket.setSoTimeout(30000); // Optional: Timeout for reading data
             Log.i(TAG, "Connected to server at " + ipAddress + ":" + port);
 
-            // Notify the JavaScript side that the connection is successful
             JSObject result = new JSObject();
             result.put("success", true);
             call.resolve(result);
-
         } catch (IOException e) {
             Log.e(TAG, "Error connecting to server: " + e.getMessage());
-            // isClientConnected = false;
             call.reject("Failed to connect to server", e);
         }
     }
@@ -161,74 +242,146 @@ public class TcpSocketManagerPlugin extends Plugin {
     // Disconnect from Server (Client)
     @PluginMethod
     public void disconnectFromServer(PluginCall call) {
-        if (clientSocket != null && !clientSocket.isClosed()) {
-            try {
-                clientSocket.close();
-                // isClientConnected = false;
+        synchronized (this) {
+            if (clientSocket == null || clientSocket.isClosed()) {
+                // If already disconnected, notify the frontend
                 JSObject result = new JSObject();
                 result.put("success", true);
-                call.resolve(result);  // Notify frontend about the disconnection
-
-            } catch (IOException e) {
-                call.reject("Error disconnecting from server", e);
+                result.put("message", "Already disconnected.");
+                call.resolve(result);
+                return;
             }
-        } else {
-            call.reject("Client is not connected");
+
+            try {
+                // Close the socket and release resources
+                clientSocket.close();
+                clientSocket = null;
+                Log.i(TAG, "Disconnected from server successfully.");
+
+                // Notify the frontend of successful disconnection
+                JSObject result = new JSObject();
+                result.put("success", true);
+                call.resolve(result);
+            } catch (IOException e) {
+                Log.e(TAG, "Error disconnecting from server: " + e.getMessage());
+                call.reject("Failed to disconnect from server", e);
+            }
         }
     }
 
     // Send Message to Server (Client)
     @PluginMethod
     public void sendMessageToServer(PluginCall call) {
-        if (clientSocket == null || clientSocket.isClosed()) {
-            call.reject("Not connected to server");
-            return;
-        }
-
-        String message = call.getString("message", "");
-        if (message == null || message.trim().isEmpty()) {
-            call.reject("Message cannot be empty.");
-            return;
-        }
-
-        try {
-             // Check if the message is valid (not empty)
-            if (message == null || message.isEmpty()) {
-                call.reject("Message cannot be empty");
+        synchronized (this) {
+            // Validate message input
+            String message = call.getString("message", "").trim();
+            if (message.isEmpty()) {
+                call.reject("Message cannot be empty.");
                 return;
             }
 
-            // Send message to the server (if connected)
-            clientSocket.getOutputStream().write((message + "\n").getBytes());
-            Log.i(TAG, "Message sent to server: " + message);
-            call.resolve(new JSObject().put("success", true));
-        } catch (IOException e) {
-            Log.e(TAG, "Error sending message: " + e.getMessage());
-            call.reject("Failed to send message", e);
+            // Check message size
+            if (message.length() > 1024) { // Example max size
+                call.reject("Message exceeds maximum allowed length (1024 characters).");
+                return;
+            }
+
+            try {
+                // Check if client is connected
+                if (clientSocket == null || clientSocket.isClosed()) {
+                    throw new IOException("Not connected to server.");
+                }
+
+                // Attempt to send the message
+                sendMessage(message);
+                call.resolve(new JSObject().put("success", true));
+
+            } catch (IOException e) {
+                Log.e(TAG, "Error sending message: " + e.getMessage(), e);
+
+                // Handle "broken pipe" or disconnection specifically
+                if (e.getMessage() != null && (e.getMessage().contains("Broken pipe") || e.getMessage().contains("Not connected"))) {
+                    Log.w(TAG, "Connection lost. Attempting to reconnect...");
+
+                    String ipAddress = call.getString("ipAddress", "");
+                    int port = call.getInt("port", 8080);
+
+                    if (reconnectToServer(ipAddress, port)) {
+                        Log.i(TAG, "Reconnected successfully. Retrying message send...");
+                        try {
+                            sendMessage(message);
+                            call.resolve(new JSObject().put("success", true));
+                        } catch (IOException retryException) {
+                            Log.e(TAG, "Failed to send message after reconnection: " + retryException.getMessage());
+                            call.reject("Failed to send message after reconnection.", retryException);
+                        }
+                    } else {
+                        call.reject("Reconnection failed. Cannot send message.");
+                    }
+                } else {
+                    call.reject("Failed to send message to server.", e);
+                }
+            }
         }
     }
 
-    @PluginMethod
-    public void disconnectAllClients(PluginCall call) {
-        try {
-                synchronized (clientConnections) {
-                    for (Socket client : clientConnections) {
-                        if (client != null && !client.isClosed()) {
-                            client.close(); // Close the client socket
-                            Log.i(TAG, "Client connection closed: " + client.getInetAddress().getHostAddress());
-                        }
-                    }
-                    clientConnections.clear(); // Clear the list of client connections
-                }
-                call.resolve(new JSObject().put("success", true));
-            } catch (IOException e) {
-                call.reject("Error disconnecting clients", e);
-            }
+    private void sendMessage(String message) throws IOException {
+        if (clientSocket == null || clientSocket.isClosed()) {
+            throw new IOException("Not connected to server.");
+        }
+        clientSocket.getOutputStream().write((message + "\n").getBytes());
+        clientSocket.getOutputStream().flush(); // Ensure message is sent immediately
+        Log.i(TAG, "Message sent to server: " + message);
     }
+
+    private boolean reconnectToServer(String ipAddress, int port) {
+        try {
+            // Validate IP address and port
+            if (!isValidIpAddress(ipAddress)) {
+                Log.w(TAG, "Invalid IP address during reconnection: " + ipAddress);
+                return false;
+            }
+            if (port < 1 || port > 65535) {
+                Log.w(TAG, "Invalid port during reconnection: " + port);
+                return false;
+            }
+
+            // Attempt reconnection
+            clientSocket = new Socket(ipAddress, port);
+            clientSocket.setSoTimeout(30000); // Optional: Timeout for reading data
+            Log.i(TAG, "Reconnected to server at " + ipAddress + ":" + port);
+            return true;
+
+        } catch (IOException e) {
+            Log.e(TAG, "Reconnection failed: " + e.getMessage(), e);
+            return false;
+        }
+    }
+
+
 
     @PluginMethod
     public void getClientCount(PluginCall call) {
         call.resolve(new JSObject().put("count", clientConnections.size()));
+    }
+
+    @Override
+    public void handleOnDestroy() {
+        super.handleOnDestroy();
+
+        // Clean up the client socket if it exists
+        if (clientSocket != null && !clientSocket.isClosed()) {
+            try {
+                clientSocket.close();
+                clientSocket = null;
+                Log.i(TAG, "Client socket closed during app destruction.");
+            } catch (IOException e) {
+                Log.e(TAG, "Error closing client socket on app destroy: " + e.getMessage());
+            }
+        }
+
+        // Stop the server if running
+        stopServer(null);
     }
 
 }

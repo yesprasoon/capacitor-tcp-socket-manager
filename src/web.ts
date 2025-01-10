@@ -4,34 +4,26 @@ import type { TcpSocketManagerPlugin } from './definitions';
 
 export class TcpSocketManagerWeb extends WebPlugin implements TcpSocketManagerPlugin {
 
-  private connected = false;
-
   constructor() {
     super({
-      name: 'CapacitorSocketServer',
+      name: 'TcpSocketManager',
       platforms: ['web'],
     });
   }
 
-  async getDeviceIpAddress(): Promise<any> {
-    console.log('ECHO', 'getDeviceIpAddress');
-    return true;
+  async getDeviceIpAddress(): Promise<{ ipAddress: string }> {
+    console.warn('Web does not support getting device IP address.');
+    return { ipAddress: '127.0.0.1' }; // Placeholder
   }
 
   // Server
-  async startServer(options: { port: number }): Promise<{ success: boolean }> {
-    console.log(`Starting server on port: ${options.port}`);
-
-    // Simulate message reception for testing
-    setTimeout(() => {
-      this.notifyListeners('receiveMessage', { message: 'Simulated message from server' });
-    }, 5000);
-
-    return { success: true };
+  async startServer(): Promise<{ success: boolean, message?: string }> {
+    console.warn('Web does not support starting a TCP server.');
+    return { success: false, message: 'Web platform does not support this functionality.' };
   }
 
   async stopServer(): Promise<{ success: boolean }> {
-    console.log('stopServer called (Web)');
+    console.warn('Web does not support stopping a TCP server.');
     return { success: false };
   }
 
@@ -45,30 +37,21 @@ export class TcpSocketManagerWeb extends WebPlugin implements TcpSocketManagerPl
     return Promise.resolve({ count: 0 });
   }
 
-  async disconnectAllClients(): Promise<{ success: boolean }> {
-    console.log('disconnectAllClients called (Web)');
+
+  // Client
+  async connectToServer(): Promise<{ success: boolean }> {
+    console.warn('Web does not support TCP socket connections.');
     return { success: false };
   }
 
-  // Client
-  async connectToServer(options: { ipAddress: string; port: number }): Promise<{ success: boolean }> {
-    console.log(`Connecting to server at ${options.ipAddress}:${options.port}`);
-    this.connected = true;
-    return { success: true };
-  }
-
   async disconnectFromServer(): Promise<{ success: boolean }> {
-    console.log('Disconnecting from server');
-    this.connected = false;
-    return { success: true };
+    console.warn('Web does not support disconnecting from a TCP server.');
+    return { success: false };
   }
 
-  async sendMessageToServer(options: { message: string }): Promise<{ success: boolean }> {
-    if (!this.connected) {
-      throw new Error('Not connected to a server');
-    }
-    console.log(`Sending message: ${options.message}`);
-    return { success: true };
+  async sendMessageToServer(): Promise<{ success: boolean }> {
+    console.warn('Web does not support sending messages to a TCP server.');
+    return { success: false };
   }
 
   addListener(eventName: 'receiveMessage', listenerFunc: (data: { message: string }) => void): any {
