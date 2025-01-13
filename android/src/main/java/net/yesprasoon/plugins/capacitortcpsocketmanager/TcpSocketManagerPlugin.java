@@ -1,6 +1,7 @@
 package net.yesprasoon.plugins.capacitortcpsocketmanager;
 
 import android.util.Log;
+
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -17,6 +18,7 @@ import java.util.List;
 import java.util.Enumeration;
 import java.util.Collections;
 
+
 @CapacitorPlugin(name = "TcpSocketManager")
 public class TcpSocketManagerPlugin extends Plugin {
 
@@ -26,33 +28,32 @@ public class TcpSocketManagerPlugin extends Plugin {
     private Socket clientSocket;
     private final List<Socket> clientConnections = Collections.synchronizedList(new ArrayList<>());
     private static final int MAX_CLIENTS = 10;
+    private Thread heartbeatThread;
+    private volatile boolean isHeartbeatRunning = false;
+    private String serverIpAddress;
+    private Integer serverPort;
+    private volatile boolean isServerRunning = false; // Volatile ensures thread-safety
 
-    @PluginMethod
-    public void getDeviceIpAddress(PluginCall call) {
+
+    private String getDeviceIpAddress() {
         try {
-            String ipAddress = getLocalIpAddress();
-            JSObject result = new JSObject();
-            result.put("ipAddress", ipAddress);
-            call.resolve(result);
-        } catch (Exception e) {
-            call.reject("Error fetching device IP address", e);
-        }
-    }
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            while (interfaces.hasMoreElements()) {
+                NetworkInterface networkInterface = interfaces.nextElement();
+                if (networkInterface.isLoopback() || !networkInterface.isUp()) continue;
 
-    private String getLocalIpAddress() throws Exception {
-        Enumeration<NetworkInterface> networkInterfaces = NetworkInterface.getNetworkInterfaces();
-        while (networkInterfaces.hasMoreElements()) {
-            NetworkInterface networkInterface = networkInterfaces.nextElement();
-            Enumeration<InetAddress> inetAddresses = networkInterface.getInetAddresses();
-            while (inetAddresses.hasMoreElements()) {
-                InetAddress inetAddress = inetAddresses.nextElement();
-                // Filter out the loopback addresses
-                if (!inetAddress.isLoopbackAddress() && inetAddress instanceof Inet4Address) {
-                    return inetAddress.getHostAddress();
+                Enumeration<InetAddress> addresses = networkInterface.getInetAddresses();
+                while (addresses.hasMoreElements()) {
+                    InetAddress address = addresses.nextElement();
+                    if (address instanceof Inet4Address && !address.isLoopbackAddress()) {
+                        return address.getHostAddress();
+                    }
                 }
             }
+        } catch (SocketException e) {
+            e.printStackTrace();
         }
-        throw new Exception("Unable to get the device IP address.");
+        return "Unknown IP";
     }
 
     private boolean isValidIpAddress(String ipAddress) {
@@ -69,14 +70,21 @@ public class TcpSocketManagerPlugin extends Plugin {
     public void startServer(PluginCall call) {
         int port = call.getInt("port", 8080);
         Log.d(TAG, "startServer called with port: " + port);
-        try{
+        try {
             if (port < 1 || port > 65535) {
                 call.reject("Invalid port number. Port must be between 1 and 65535.");
                 return;
             }
+
+            // Check if the server is already running
             if (serverSocket != null && !serverSocket.isClosed()) {
                 Log.w(TAG, "Server is already running on port: " + serverSocket.getLocalPort());
-                call.resolve(new JSObject().put("success", true).put("message", "Server already running"));
+                String ipAddress = getDeviceIpAddress(); // Get the device's actual IP
+                call.resolve(new JSObject()
+                        .put("success", true)
+                        .put("message", "Server already running")
+                        .put("ipAddress", ipAddress)
+                        .put("port", serverSocket.getLocalPort()));
                 return;
             }
 
@@ -91,25 +99,27 @@ public class TcpSocketManagerPlugin extends Plugin {
                 }
             }
 
-            // Ensure no existing server socket is running
-            if (serverSocket != null && !serverSocket.isClosed()) {
-                call.resolve(new JSObject().put("success", true).put("message", "Server already running"));
-                return;
-            }
-
+            // Initialize the server
             serverSocket = new ServerSocket(port);
             serverSocket.setSoTimeout(30000); // Optional: set timeout
+            isServerRunning = true; // Set flag to true
 
             new Thread(() -> listenForClients()).start();
-            call.resolve(new JSObject().put("success", true));
+            String ipAddress = getDeviceIpAddress(); // Get the device's actual IP
+
+            call.resolve(new JSObject()
+                .put("success", true)
+                .put("ipAddress", ipAddress)
+                .put("port", port));
+            Log.i(TAG, "Server started successfully on IP " + ipAddress + " and port " + port);
         } catch (IOException e) {
-            Log.e(TAG, "Failed to start server on port " + port + " at " + serverSocket.getInetAddress() + ": " + e.getMessage(), e);
+             Log.e(TAG, "Failed to start server on port " + port + ": " + e.getMessage(), e);
             call.reject("Error starting server. Please check logs for more details.", e);
         }
     }
 
     private void listenForClients() {
-        while (!serverSocket.isClosed()) {
+        while (isServerRunning && !serverSocket.isClosed()) {
             try {
                 Socket client = serverSocket.accept();
                 if (client == null || client.isClosed()) {
@@ -172,6 +182,7 @@ public class TcpSocketManagerPlugin extends Plugin {
     @PluginMethod
     public void stopServer(PluginCall call) {
         try {
+            isServerRunning = false; // Set flag to false
             if (serverSocket != null && !serverSocket.isClosed()) {
                 synchronized (clientConnections) {
                     for (Socket client : clientConnections) {
@@ -226,9 +237,21 @@ public class TcpSocketManagerPlugin extends Plugin {
         }
 
         try {
+            this.serverIpAddress = ipAddress;
+            this.serverPort = port;
+
             clientSocket = new Socket(ipAddress, port);
-            clientSocket.setSoTimeout(30000); // Optional: Timeout for reading data
+
+            // Enable keep-alive
+            clientSocket.setKeepAlive(true);
+
+            // Set socket timeout (optional)
+            clientSocket.setSoTimeout(30000);
+
             Log.i(TAG, "Connected to server at " + ipAddress + ":" + port);
+
+            // Start the heartbeat after connection
+            startHeartbeat(ipAddress, port);
 
             JSObject result = new JSObject();
             result.put("success", true);
@@ -242,9 +265,12 @@ public class TcpSocketManagerPlugin extends Plugin {
     // Disconnect from Server (Client)
     @PluginMethod
     public void disconnectFromServer(PluginCall call) {
+        stopHeartbeat(); // Stop heartbeat
+
         synchronized (this) {
             if (clientSocket == null || clientSocket.isClosed()) {
-                // If already disconnected, notify the frontend
+                this.serverIpAddress = null;
+                this.serverPort = null;
                 JSObject result = new JSObject();
                 result.put("success", true);
                 result.put("message", "Already disconnected.");
@@ -253,12 +279,12 @@ public class TcpSocketManagerPlugin extends Plugin {
             }
 
             try {
-                // Close the socket and release resources
                 clientSocket.close();
                 clientSocket = null;
                 Log.i(TAG, "Disconnected from server successfully.");
 
-                // Notify the frontend of successful disconnection
+                this.serverIpAddress = null;
+                this.serverPort = null;
                 JSObject result = new JSObject();
                 result.put("success", true);
                 call.resolve(result);
@@ -268,6 +294,7 @@ public class TcpSocketManagerPlugin extends Plugin {
             }
         }
     }
+
 
     // Send Message to Server (Client)
     @PluginMethod
@@ -279,20 +306,34 @@ public class TcpSocketManagerPlugin extends Plugin {
                 call.reject("Message cannot be empty.");
                 return;
             }
-
             // Check message size
-            if (message.length() > 1024) { // Example max size
-                call.reject("Message exceeds maximum allowed length (1024 characters).");
-                return;
-            }
-
+            // if (message.length() > 1024) { // Example max size
+            //     call.reject("Message exceeds maximum allowed length (1024 characters).");
+            //     return;
+            // }
             try {
                 // Check if client is connected
-                if (clientSocket == null || clientSocket.isClosed()) {
-                    throw new IOException("Not connected to server.");
+                if (clientSocket == null || clientSocket.isClosed() || !clientSocket.isConnected()) {
+                    Log.w(TAG, "Socket not connected. Attempting to reconnect...");
+                    
+                    // Get IP and port from parameters or fallback to stored values
+                    String ipAddress = call.getString("ipAddress", this.serverIpAddress);
+                    int port = call.getInt("port", this.serverPort);
+
+                    // Validate the fallback values
+                    if (ipAddress == null || ipAddress.isEmpty() || (port < 1 || port > 65535)) {
+                        call.reject("Invalid IP address or port. Ensure valid connection details are set.");
+                        return;
+                    }
+
+                    // Attempt reconnection
+                    if (!reconnectToServer(ipAddress, port)) {
+                        call.reject("Failed to reconnect to server.");
+                        return;
+                    }
                 }
 
-                // Attempt to send the message
+                // Send the message
                 sendMessage(message);
                 call.resolve(new JSObject().put("success", true));
 
@@ -303,8 +344,15 @@ public class TcpSocketManagerPlugin extends Plugin {
                 if (e.getMessage() != null && (e.getMessage().contains("Broken pipe") || e.getMessage().contains("Not connected"))) {
                     Log.w(TAG, "Connection lost. Attempting to reconnect...");
 
-                    String ipAddress = call.getString("ipAddress", "");
-                    int port = call.getInt("port", 8080);
+                    // Use fallback values if not explicitly passed
+                    String ipAddress = call.getString("ipAddress", this.serverIpAddress);
+                    int port = call.getInt("port", this.serverPort);
+
+                    // Validate the fallback values
+                    if (ipAddress == null || ipAddress.isEmpty() || port <= 0) {
+                        call.reject("Reconnection failed due to missing IP or port.");
+                        return;
+                    }
 
                     if (reconnectToServer(ipAddress, port)) {
                         Log.i(TAG, "Reconnected successfully. Retrying message send...");
@@ -312,7 +360,7 @@ public class TcpSocketManagerPlugin extends Plugin {
                             sendMessage(message);
                             call.resolve(new JSObject().put("success", true));
                         } catch (IOException retryException) {
-                            Log.e(TAG, "Failed to send message after reconnection: " + retryException.getMessage());
+                            Log.e(TAG, "Failed to send message after reconnection: " + retryException.getMessage(), retryException);
                             call.reject("Failed to send message after reconnection.", retryException);
                         }
                     } else {
@@ -324,6 +372,7 @@ public class TcpSocketManagerPlugin extends Plugin {
             }
         }
     }
+
 
     private void sendMessage(String message) throws IOException {
         if (clientSocket == null || clientSocket.isClosed()) {
@@ -359,7 +408,6 @@ public class TcpSocketManagerPlugin extends Plugin {
     }
 
 
-
     @PluginMethod
     public void getClientCount(PluginCall call) {
         call.resolve(new JSObject().put("count", clientConnections.size()));
@@ -383,5 +431,49 @@ public class TcpSocketManagerPlugin extends Plugin {
         // Stop the server if running
         stopServer(null);
     }
+
+    private void startHeartbeat(String ipAddress, int port) {
+        new Thread(() -> {
+            while (true) {
+                try {
+                    // Pause for 5 seconds between heartbeats
+                    Thread.sleep(5000);
+
+                    synchronized (this) {
+                        // Check if the client socket is connected and operational
+                        if (clientSocket == null || clientSocket.isClosed() || !clientSocket.isConnected()) {
+                            Log.w(TAG, "Connection lost. Attempting to reconnect...");
+                            if (reconnectToServer(ipAddress, port)) {
+                                Log.i(TAG, "Reconnected successfully during heartbeat.");
+                            } else {
+                                Log.e(TAG, "Heartbeat reconnection failed.");
+                            }
+                        } else {
+                            // Send a lightweight heartbeat message
+                            clientSocket.getOutputStream().write(("\n").getBytes());
+                            clientSocket.getOutputStream().flush();
+                            Log.i(TAG, "Heartbeat sent to server.");
+                        }
+                    }
+                } catch (InterruptedException e) {
+                    Log.e(TAG, "Heartbeat thread interrupted", e);
+                    break; // Exit the loop if the thread is interrupted
+                } catch (IOException e) {
+                    Log.e(TAG, "Error during heartbeat operation", e);
+                }
+            }
+        }).start();
+    }
+
+
+    private void stopHeartbeat() {
+        isHeartbeatRunning = false;
+        if (heartbeatThread != null) {
+            heartbeatThread.interrupt();
+            heartbeatThread = null;
+        }
+        Log.i(TAG, "Heartbeat stopped.");
+    }
+
 
 }

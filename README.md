@@ -4,6 +4,10 @@
 
 ---
 
+![npm](https://img.shields.io/npm/v/@yesprasoon/capacitor-tcp-socket-manager)
+![npm downloads](https://img.shields.io/npm/dw/@yesprasoon/capacitor-tcp-socket-manager)
+![license](https://img.shields.io/github/license/yesprasoon/capacitor-tcp-socket-manager)
+
 ## Table of Contents
 
 - [Features](#features)
@@ -17,14 +21,13 @@
     - [connectToServer](#connecttoserver)
     - [disconnectFromServer](#disconnectfromserver)
     - [sendMessageToServer](#sendmessagetoserver)
-  - [Utility Methods](#utility-methods)
-    - [getDeviceIpAddress](#getdeviceipaddress)
 - [Events](#events)
   - [receiveMessage](#receivemessage)
 - [Example Usage](#example-usage)
   - [Starting a Server](#starting-a-server)
   - [Sending a Message from Client to Server](#sending-a-message-from-client-to-server)
-- [Notes](#notes)
+- [Planned Features](#planned-features)
+- [Troubleshooting](#troubleshooting)
 - [License](#license)
 
 ---
@@ -43,23 +46,27 @@
 
 ## Installation
 
-To install the plugin, run the following commands:
+### Prerequisites
+- Capacitor 4 or later
+- Android Studio installed and configured
+- Node.js and npm installed
 
-```bash
-npm install @yesprasoon/capacitor-tcp-socket-manager
-npx cap sync
-
-```
+### Steps
+1. Install the plugin:
+   ```bash
+   npm install @yesprasoon/capacitor-tcp-socket-manager
+   ```
+2. Sync with Capacitor:
+   ```bash
+   npx cap sync
+   ```
+3. Rebuild the Android project:
+   ```bash
+   npx cap open android
+   ```
 
 ---
 
-## Imports
-
-### Importing the Plugin
-Before using the capacitor-tcp-socket-manager plugin in your frontend, you need to import it in your TypeScript files as follows:
-```javascript
-import { TcpSocketManager } from 'capacitor-tcp-socket-manager';
-```
 ## API Methods
 
 ### Server-Side Methods
@@ -70,10 +77,14 @@ Starts a TCP server on the specified port.
 **Parameters:**
 - `port`: (optional, default: 8080) Port number to start the server on.
 
+**Returns:**
+- `ipAddress`: The IP address of the server.
+- `port`: The port on which the server is running.
+
 **Usage:**
 ```javascript
 TcpSocketManager.startServer({ port: 8080 })
-  .then(() => console.log('Server started'))
+  .then(response => console.log(`Server started on ${response.ipAddress}:${response.port}`))
   .catch(error => console.error(error));
 ```
 
@@ -89,6 +100,9 @@ TcpSocketManager.stopServer()
 
 #### `getClientCount`
 Gets the number of currently connected clients.
+
+**Returns:**
+- `count`: The number of connected clients.
 
 **Usage:**
 ```javascript
@@ -127,27 +141,15 @@ TcpSocketManager.disconnectFromServer()
 Sends a message to the connected server.
 
 **Parameters:**
-- `ipAddress`: The IP address of the server.
-- `port`: (optional, default: 8080) Port number of the server.
 - `message`: The message string to send.
+- `ipAddress`: (optional): The IP address of the server. If not provided, the stored IP address (from the connection step) will be used.
+- `port`: (optional, default: 8080): Port number of the server. If not provided, the stored port (from the connection step) will be used.
 
 **Usage:**
 ```javascript
-TcpSocketManager.sendMessageToServer({ ipAddress: '192.168.0.100', port: 8080, message: 'Hello Server!' })
-  .then(() => console.log('Message sent'))
-  .catch(error => console.error(error));
-```
-
-### Utility Methods
-
-#### `getDeviceIpAddress`
-Gets the local device's IP address.
-
-**Usage:**
-```javascript
-TcpSocketManager.getDeviceIpAddress()
-  .then(result => console.log(`Device IP Address: ${result.ipAddress}`))
-  .catch(error => console.error(error));
+TcpSocketManager.sendMessageToServer({ message: 'Hello Server!' })
+  .then(() => console.log('Message sent successfully'))
+  .catch(error => console.error('Failed to send message:', error));
 ```
 
 ---
@@ -171,7 +173,7 @@ TcpSocketManager.addListener('receiveMessage', data => {
 ### Starting a Server
 ```javascript
 TcpSocketManager.startServer({ port: 8080 })
-  .then(() => console.log('Server is running on port 8080'))
+  .then(response => console.log(`Server is running on ${response.ipAddress}:${response.port}`))
   .catch(error => console.error(error));
 ```
 
@@ -179,7 +181,7 @@ TcpSocketManager.startServer({ port: 8080 })
 ```javascript
 TcpSocketManager.connectToServer({ ipAddress: '192.168.0.100', port: 8080 })
   .then(() => {
-    return TcpSocketManager.sendMessageToServer({ ipAddress: '192.168.0.100', port: 8080, message: 'Hello, Server!' });
+    return TcpSocketManager.sendMessageToServer({ message: 'Hello, Server!' });
   })
   .then(() => console.log('Message sent to server'))
   .catch(error => console.error(error));
@@ -187,14 +189,32 @@ TcpSocketManager.connectToServer({ ipAddress: '192.168.0.100', port: 8080 })
 
 ---
 
-## Notes
+## Planned Features
 
-- The maximum number of client connections is limited to 10 by default. You can modify this limit in the Java source code if needed.
-- Ensure proper error handling for connection and message-related operations.
-- Server and client timeouts can be configured using `setSoTimeout` in the Java code.
+We are continuously improving this plugin. Future updates may include:
+- TLS/SSL communication for secure connections.
+- IP whitelisting for enhanced access control.
+- Client authentication mechanisms.
+- Message acknowledgment for reliable communication.
+- Automatic client reconnection.
+
+All suggestions are welcome!
+
+---
+
+## Troubleshooting
+
+### Problem: Server does not start
+- Ensure the port is not already in use by another application.
+- Check for sufficient permissions in your app's AndroidManifest.xml.
+
+### Problem: Unable to connect to the server
+- Verify the IP address and port are correct.
+- Ensure the device is on the same network as the server.
 
 ---
 
 ## License
 
 This project is licensed under the MIT License. See the LICENSE file for more details.
+

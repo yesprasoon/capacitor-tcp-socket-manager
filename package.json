@@ -1,6 +1,6 @@
 {
   "name": "@yesprasoon/capacitor-tcp-socket-manager",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Custom Capacitor Plugin To implement the socket server functionality",
   "main": "dist/plugin.cjs.js",
   "module": "dist/esm/index.js",

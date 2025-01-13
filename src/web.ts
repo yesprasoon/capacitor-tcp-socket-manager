@@ -11,15 +11,10 @@ export class TcpSocketManagerWeb extends WebPlugin implements TcpSocketManagerPl
     });
   }
 
-  async getDeviceIpAddress(): Promise<{ ipAddress: string }> {
-    console.warn('Web does not support getting device IP address.');
-    return { ipAddress: '127.0.0.1' }; // Placeholder
-  }
-
   // Server
-  async startServer(): Promise<{ success: boolean, message?: string }> {
+  async startServer(): Promise<{ success: boolean, message?: string, ipAddress: string, port: number }> {
     console.warn('Web does not support starting a TCP server.');
-    return { success: false, message: 'Web platform does not support this functionality.' };
+    return { success: false, message: 'Web platform does not support this functionality.', ipAddress: '192.168.0.100', port: 8080 };
   }
 
   async stopServer(): Promise<{ success: boolean }> {
