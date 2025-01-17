@@ -1,7 +1,7 @@
 {
   "name": "@yesprasoon/capacitor-tcp-socket-manager",
   "version": "1.1.1",
-  "description": "Custom Capacitor Plugin To implement the socket server functionality",
+  "description": "A Capacitor plugin for Android to enable TCP socket server and client communication in hybrid mobile apps.",
   "main": "dist/plugin.cjs.js",
   "module": "dist/esm/index.js",
   "types": "dist/esm/index.d.ts",
@@ -23,7 +23,19 @@
   "keywords": [
     "capacitor",
     "plugin",
-    "native"
+    "tcp",
+    "socket",
+    "tcp server",
+    "tcp client",
+    "socket manager",
+    "capacitor tcp",
+    "android",
+    "capacitor plugin",
+    "hybrid apps",
+    "ionic",
+    "communication",
+    "networking",
+    "real-time"
   ],
   "scripts": {
     "verify": "npm run verify:android",
