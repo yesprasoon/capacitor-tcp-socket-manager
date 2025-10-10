@@ -53,8 +53,14 @@
 
 ### Steps
 1. Install the plugin:
+
+   For Capacitor 7:
    ```bash
    npm install @yesprasoon/capacitor-tcp-socket-manager
+   ```
+   For Capacitor 6:
+   ```bash
+   npm install @yesprasoon/capacitor-tcp-socket-manager@1.1.1
    ```
 2. Sync with Capacitor:
    ```bash
