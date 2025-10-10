@@ -60,7 +60,7 @@
    ```
    For Capacitor 6:
    ```bash
-   npm install @yesprasoon/capacitor-tcp-socket-manager@^1.1.1
+   npm install @yesprasoon/capacitor-tcp-socket-manager@^1.1.2
    ```
 2. Sync with Capacitor:
    ```bash
